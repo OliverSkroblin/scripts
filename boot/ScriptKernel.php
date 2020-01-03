@@ -1,10 +1,18 @@
 <?php
 
-class ScriptKernel extends \Shopware\Development\Kernel
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+
+class ScriptKernel extends \Shopware\Core\Kernel
 {
-    public function registerBundles()
+    protected function build(ContainerBuilder $container)
     {
-        yield from parent::registerBundles();
-        yield new PublicBundle();
+        foreach ($container->getDefinitions() as $id => $definition) {
+            if ($definition->isAbstract()) {
+                continue;
+            }
+            $definition->setPublic(true);
+        }
+
+        return $container;
     }
 }

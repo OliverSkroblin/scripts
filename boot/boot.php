@@ -1,73 +1,29 @@
 <?php
 
-use PackageVersions\Versions;
-use Shopware\Core\Framework\Plugin\KernelPluginLoader\DbalKernelPluginLoader;
-use Shopware\Development\Kernel;
-use Symfony\Bundle\FrameworkBundle\Console\Application;
-use Symfony\Component\Console\Input\ArgvInput;
-use Symfony\Component\Debug\Debug;
+use Shopware\Core\HttpKernel;
 use Symfony\Component\Dotenv\Dotenv;
-use Doctrine\DBAL\Connection;
-use Shopware\Core\Framework\Uuid\Uuid;
 
-set_time_limit(0);
-
-$classLoader = require __DIR__.' /../../../vendor/autoload.php';
+$classLoader = require __DIR__.'/../../../vendor/autoload.php';
 
 require __DIR__ . '/ScriptKernel.php';
-require __DIR__ . '/PublicBundle.php';
+require __DIR__ . '/api.php';
+require __DIR__ . '/store-api.php';
+require __DIR__ . '/base-script.php';
 
-if (!class_exists(Application::class)) {
-    throw new \RuntimeException('You need to add "symfony/framework-bundle" as a Composer dependency.');
+$projectRoot = dirname(__DIR__) . '/../..';
+
+if (class_exists(Dotenv::class) && (file_exists($projectRoot . '/.env.local.php') || file_exists($projectRoot . '/.env') || file_exists($projectRoot . '/.env.dist'))) {
+    (new Dotenv())->usePutenv()->bootEnv($projectRoot . '/.env');
 }
 
-if (!class_exists(Dotenv::class)) {
-    throw new \RuntimeException('APP_ENV environment variable is not defined. You need to define environment variables for configuration or add "symfony/dotenv" as a Composer dependency to load variables from a .env file.');
-}
+$returnKernel = $returnKernel ?? false;
 
-(new Dotenv())->load(__DIR__.'/../../../.env');
+$env = $env ?? 'prod';
 
-$input = new ArgvInput();
-$env = 'prod';
-$debug = (bool) ($_SERVER['APP_DEBUG'] ?? ('prod' !== $env)) && !$input->hasParameterOption('--no-debug', true);
+$kernel = new class($env, $env !== 'prod', $classLoader) extends HttpKernel {
+    protected static $kernelClass = ScriptKernel::class;
+};
 
-if ($debug) {
-    umask(0000);
+$kernel->getKernel()->boot();
 
-    if (class_exists(Debug::class)) {
-        Debug::enable();
-    }
-}
-
-function getCacheId(Connection $connection): string
-{
-    try {
-        $cacheId = $connection->fetchColumn(
-            'SELECT `value` FROM app_config WHERE `key` = :key',
-            ['key' => 'cache-id']
-        );
-    } catch (\Exception $e) {
-        return Uuid::randomHex();
-    }
-
-    return $cacheId ?? Uuid::randomHex();
-}
-
-$connection = Kernel::getConnection();
-
-if ($env === 'dev') {
-    $connection->getConfiguration()->setSQLLogger(
-        new \Shopware\Core\Profiling\Doctrine\DebugStack()
-    );
-}
-
-$shopwareVersion = Versions::getVersion('shopware/platform');
-
-$pluginLoader = new DbalKernelPluginLoader($classLoader, null, $connection);
-
-$cacheId = getCacheId($connection);
-
-$kernel = new ScriptKernel($env, $debug, $pluginLoader, $cacheId, $shopwareVersion, $connection);
-$kernel->boot();
-
-return $kernel->getContainer();
+return $kernel;
